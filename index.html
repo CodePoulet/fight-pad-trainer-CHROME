@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fightpad Trainer (Chromebook Edition)</title>
+<style>
+body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #121212; color: #ffffff; }
+h1 { color: #00ffea; text-shadow: 0 0 10px #00ffea; }
+#targetButton { font-size: 32px; padding: 20px 50px; background-color: #c300ff; color: #fff; border: none; border-radius: 25px; text-shadow: 0 0 5px #fff; transition: background-color 0.2s, transform 0.1s, box-shadow 0.1s;}
+button { cursor: pointer; }
+#startBtn, #resetMappingBtn, #mode30Btn, #freeModeBtn { font-size: 20px; padding: 12px 28px; border: none; border-radius: 20px; margin: 8px; color: #000; text-shadow: 0 0 3px #fff; box-shadow: 0 0 10px #00ffea; transition: transform 0.1s, box-shadow 0.1s;}
+#startBtn { background-color: #00ffea; }
+#resetMappingBtn { background-color: #ff5555; color: white; box-shadow: 0 0 10px #ff5555; }
+#mode30Btn { background-color: #00ffea; }
+#freeModeBtn { background-color: #ffcc00; box-shadow: 0 0 10px #ffcc00; }
+#startBtn:active, #resetMappingBtn:active, #mode30Btn:active, #freeModeBtn:active { transform: scale(0.95); box-shadow: 0 0 25px #ffffff; }
+#message { margin-top: 20px; font-size: 26px; color: #ffdd00; text-shadow: 0 0 8px #ffdd00;}
+#score, #timer { margin-top: 15px; font-size: 22px; color: #00ffea; text-shadow: 0 0 8px #00ffea;}
+#highScore { position: absolute; top: 10px; right: 10px; color: gold; font-size: 24px;}
+#instructions { position: absolute; top: 10px; left: 10px; cursor: pointer; color: cyan; font-size: 20px; font-weight: bold;}
+#instructions .tooltip { visibility: hidden; width: 350px; background-color: #222; color: #fff; text-align: left; padding: 15px; border-radius: 8px; position: absolute; top: 125%; left: 0; opacity: 0; transition: opacity 0.3s; z-index: 10; font-size: 16px; line-height: 1.4;}
+#instructions:hover .tooltip { visibility: visible; opacity: 1;}
+#wrongCount { color: #ff4444; font-size: 20px; margin-top: 5px; text-shadow: 0 0 5px #ff4444;}
+</style>
+</head>
+<body>
+
+<h1>Fightpad Trainer (Chromebook Edition)</h1>
+<p>Press the button shown on your fightpad:</p>
+
+<button id="targetButton">Waiting...</button>
+<div id="message">Select a mode below to begin mapping your fightpad.</div>
+<div id="highScore">High Score: 0</div>
+<div id="score">Score: 0</div>
+<div id="wrongCount">(Wrong: 0)</div>
+<div id="timer">Time: 30s</div>
+
+<button id="mode30Btn">30s Challenge</button>
+<button id="freeModeBtn">Free Mode</button>
+<br>
+<button id="startBtn">Start Round</button>
+<button id="resetMappingBtn">Reset Mapping</button>
+
+<div id="instructions">Instructions
+  <div class="tooltip">
+    <ul>
+      <li>Map your 6 buttons: Light, Medium, Heavy, SP1, SP2, Assist.</li>
+      <li>Press the correct button to teach the trainer.</li>
+      <li>30s Challenge = 30 seconds per round. Free Mode = unlimited.</li>
+      <li>Wrong presses add to the red counter and subtract points.</li>
+      <li style="color: yellow;">Tip: Unplug & plug back if needed.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+const buttons = ['Light', 'Medium', 'Heavy', 'SP1', 'SP2', 'Assist'];
+const NEUTRAL_COLOR = '#c300ff';
+const CORRECT_COLOR = '#00ff00';
+const WRONG_COLOR = '#ff0000';
+
+let currentButton = '';
+let score = 0;
+let wrongCount = 0;
+let time = 30;
+let interval;
+let buttonIndexMap = {};
+let prevButtons = [];
+let highScore = parseInt(localStorage.getItem('highScore')) || 0;
+let mappedCount = 0;
+let mappingPhase = false;
+let roundActive = false;
+let freeMode = false;
+
+const targetButton = document.getElementById('targetButton');
+const message = document.getElementById('message');
+const scoreDisplay = document.getElementById('score');
+const timerDisplay = document.getElementById('timer');
+const startBtn = document.getElementById('startBtn');
+const resetMappingBtn = document.getElementById('resetMappingBtn');
+const highScoreDisplay = document.getElementById('highScore');
+const wrongCountDisplay = document.getElementById('wrongCount');
+const mode30Btn = document.getElementById('mode30Btn');
+const freeModeBtn = document.getElementById('freeModeBtn');
+
+highScoreDisplay.textContent = `High Score: ${highScore}`;
+
+function pickRandomButton() {
+  const available = buttons.filter(b => b !== currentButton);
+  currentButton = available[Math.floor(Math.random() * available.length)];
+  targetButton.textContent = currentButton;
+  targetButton.style.backgroundColor = NEUTRAL_COLOR;
+}
+
+function startMapping() {
+  mappingPhase = true;
+  mappedCount = 0;
+  buttonIndexMap = {};
+  score = 0;
+  wrongCount = 0;
+  scoreDisplay.textContent = `Score: 0`;
+  wrongCountDisplay.textContent = `(Wrong: 0)`;
+  message.textContent = `Press the button for "${buttons[mappedCount]}"`;
+  currentButton = buttons[mappedCount];
+  targetButton.textContent = currentButton;
+}
+
+function startRound() {
+  if (Object.keys(buttonIndexMap).length < buttons.length) {
+    message.textContent = '❗ Map all buttons first!';
+    return;
+  }
+  mappingPhase = false;
+  roundActive = true;
+  score = 0;
+  wrongCount = 0;
+  time = 30;
+  scoreDisplay.textContent = `Score: ${score}`;
+  wrongCountDisplay.textContent = `(Wrong: ${wrongCount})`;
+  timerDisplay.textContent = freeMode ? 'Time: ∞' : `Time: ${time}s`;
+  startBtn.textContent = 'Reset Round';
+  pickRandomButton();
+
+  if (!freeMode) {
+    interval = setInterval(() => {
+      time--;
+      timerDisplay.textContent = `Time: ${time}s`;
+      if (time <= 0) {
+        clearInterval(interval);
+        roundActive = false;
+        message.textContent = '⏰ Round Over!';
+        targetButton.textContent = 'Waiting...';
+        startBtn.textContent = 'Start Round';
+      }
+    }, 1000);
+  }
+}
+
+function updateScore(newScore) {
+  score = newScore;
+  scoreDisplay.textContent = `Score: ${score}`;
+  if (!freeMode && score > highScore) {
+    highScore = score;
+    localStorage.setItem('highScore', highScore);
+    highScoreDisplay.textContent = `High Score: ${highScore}`;
+  }
+}
+
+function resetMapping() {
+  if (interval) clearInterval(interval);
+  roundActive = false;
+  mappingPhase = false;
+  score = 0;
+  wrongCount = 0;
+  mappedCount = 0;
+  scoreDisplay.textContent = `Score: ${score}`;
+  wrongCountDisplay.textContent = `(Wrong: ${wrongCount})`;
+  timerDisplay.textContent = `Time: 30s`;
+  targetButton.textContent = 'Waiting...';
+  targetButton.style.backgroundColor = NEUTRAL_COLOR;
+  buttonIndexMap = {};
+  message.textContent = 'Press a mode button to start mapping your fightpad.';
+}
+
+function checkGamepad() {
+  const gps = navigator.getGamepads();
+  if (gps[0]) {
+    const gp = gps[0];
+    gp.buttons.forEach((b, i) => {
+      const pressedNow = b.pressed;
+      const pressedBefore = prevButtons[i] || false;
+
+      if (pressedNow && !pressedBefore) {
+        if (mappingPhase) {
+          if (!(buttons[mappedCount] in buttonIndexMap)) {
+            buttonIndexMap[buttons[mappedCount]] = i;
+            message.textContent = `Mapped "${buttons[mappedCount]}" ✅`;
+            targetButton.style.backgroundColor = CORRECT_COLOR;
+            mappedCount++;
+            if (mappedCount < buttons.length) {
+              currentButton = buttons[mappedCount];
+              setTimeout(() => {
+                targetButton.style.backgroundColor = NEUTRAL_COLOR;
+                targetButton.textContent = currentButton;
+                message.textContent = `Press the button for "${currentButton}"`;
+              }, 300);
+            } else {
+              message.textContent = '✅ Mapping complete! Click "Start Round"';
+              targetButton.textContent = 'Waiting...';
+              mappingPhase = false;
+            }
+          }
+        } else if (roundActive) {
+          if (buttonIndexMap[currentButton] === i) {
+            message.textContent = '✅ Correct!';
+            updateScore(score + 1);
+            targetButton.style.backgroundColor = CORRECT_COLOR;
+          } else {
+            message.textContent = '❌ Wrong! -1 point';
+            score--;
+            wrongCount++;
+            scoreDisplay.textContent = `Score: ${score}`;
+            wrongCountDisplay.textContent = `(Wrong: ${wrongCount})`;
+            targetButton.style.backgroundColor = WRONG_COLOR;
+          }
+          setTimeout(pickRandomButton, 300);
+        }
+      }
+      prevButtons[i] = pressedNow;
+    });
+  }
+  requestAnimationFrame(checkGamepad);
+}
+
+// --- EVENT LISTENERS ---
+mode30Btn.addEventListener('click', () => { freeMode=false; resetMapping(); startMapping(); });
+freeModeBtn.addEventListener('click', () => { freeMode=true; resetMapping(); startMapping(); });
+startBtn.addEventListener('click', () => { if(interval) clearInterval(interval); startRound(); });
+resetMappingBtn.addEventListener('click', resetMapping);
+
+window.addEventListener('gamepadconnected', (e)=> { 
+  message.textContent = `🎮 Gamepad connected: ${e.gamepad.id}. Choose a mode to begin.`; 
+});
+
+checkGamepad();
+</script>
+</body>
+</html>
